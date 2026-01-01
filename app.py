@@ -191,8 +191,15 @@ class YOLOv8SNNFusion:
                 }
 
             # Use PIL Image directly (supported by YOLOv8)
+            # Use PIL Image directly (supported by YOLOv8)
             results = self.yolo_model(pil_image, verbose=False)
 
+            annotated_image = None
+
+            if len(results) > 0:
+                # Create YOLO-annotated image (NumPy BGR -> RGB PIL)
+                im_bgr = results[0].plot()           # annotated BGR array
+                annotated_image = Image.fromarray(im_bgr[..., ::-1])  # to RGB PIL
 
             if len(results) > 0 and len(results[0].boxes) > 0:
                 boxes = results[0].boxes
@@ -215,6 +222,7 @@ class YOLOv8SNNFusion:
                         "pred_class": best_mapped_pred,
                         "confidence": best_confidence,
                         "snn_probs": snn_probs[0].cpu().numpy(),
+                        "annotated_image": annotated_image,
                     }
 
             # Fallback
@@ -223,7 +231,9 @@ class YOLOv8SNNFusion:
                 "pred_class": snn_pred,
                 "confidence": snn_confidence,
                 "snn_probs": snn_probs[0].cpu().numpy(),
+                "annotated_image": annotated_image,
             }
+
 
 # --------------------------------------------------------------------------------
 # LOAD MODELS
@@ -325,8 +335,7 @@ def fused_predict_pil(pil_img):
 st.markdown(
     """
     <h1 style='text-align: center; color: #2e7d32;'>
-        Enhanced Wildlife Detection and Species Classification:<br>
-        Fusion of YOLOv8 with Energy-Efficient Spiking Neural Networks
+        Enhanced Wildlife Detection and Species Classification Using a Hybrid YOLOv8–SNN Model with an Adaptive Switching Mechanism
     </h1>
     <p style='text-align: center; color: #555; font-size: 16px;'>
         Buffalo | Elephant | Rhino | Zebra
@@ -374,20 +383,39 @@ with left_col:
 # RIGHT: Upload & Predict
 with right_col:
     st.markdown("### 📤 Upload and Predict")
-
     uploaded_file = st.file_uploader(
-        "Upload an image (JPG, JPEG, PNG)",
-        type=["jpg", "jpeg", "png"],
-    )
+    "Upload an image (JPG, JPEG, PNG)",
+    type=["jpg", "jpeg", "png"],
+)
 
     if uploaded_file is not None:
         pil_image = Image.open(uploaded_file).convert("RGB")
-        # st.image(pil_image, caption="Uploaded Image", use_container_width=True)
-        st.image(pil_image, caption="Uploaded Image", width=350)
+
+        # Two columns: Original (left) and Detection (right)
+        img_col1, img_col2 = st.columns(2)
+
+        with img_col1:
+            st.markdown("**Original Image**")
+            st.image(pil_image, use_container_width=True)
+
+        # Placeholder for YOLO-annotated image; we will fill after prediction
+        yolo_placeholder = img_col2.container()
+       
 
         if st.button("🔍 Run Detection and Classification"):
             with st.spinner("Running fusion model (SNN + YOLOv8)..."):
                 result = fused_predict_pil(pil_image)
+
+            # If we have an annotated image from YOLO, display it
+            if result.get("annotated_image") is not None:
+                with yolo_placeholder:
+                    st.markdown("**Detection Output**")
+                    st.image(result["annotated_image"], use_container_width=True)
+            else:
+                # Keep info message if YOLO was not used
+                with yolo_placeholder:
+                    st.info("YOLOv8 was not used for this prediction (SNN was confident).")
+
 
             if result["snn_probs"][3] > 0.35:
                 final_class = WILDLIFE_CLASSES[3]
