@@ -414,6 +414,8 @@ with right_col:
             else:
                 # Keep info message if YOLO was not used
                 with yolo_placeholder:
+                    st.markdown("**Detection Output**")
+                    st.image(result["annotated_image"], use_container_width=True)
                     st.info("YOLOv8 was not used for this prediction (SNN was confident).")
 
 
@@ -463,3 +465,4 @@ with right_col:
                 st.write(f"- **{cls_name}**: {p*100:.2f}%")
     else:
         st.info("Please upload a wildlife image to start the prediction.")
+
