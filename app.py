@@ -137,11 +137,10 @@ class YOLOv8SNNFusion:
         self.yolo_model = YOLO(yolo_model_path)
 
         self.coco_to_wildlife = {
-            21: 2,  # cow -> Rhino (example mapping)
-            22: 1,  # elephant -> Elephant
-            23: 3,  # bear -> Zebra
-            24: 3,  # zebra -> Zebra
+            22: 3,  # zebra -> Zebra
+            20: 2,  # elephant -> Elephant (COCO elephant = 20)
         }
+
 
         self.class_thresholds = class_thresholds or {
             0: confidence_threshold,
@@ -206,28 +205,35 @@ class YOLOv8SNNFusion:
                 confidences = boxes.conf.cpu().numpy()
                 classes = boxes.cls.cpu().numpy()
 
-                best_mapped_pred = None
+                names = self.yolo_model.names  # YOLO class names
+
+                best_pred_name = None
                 best_confidence = 0.0
 
                 for i in range(len(classes)):
-                    yolo_class = int(classes[i])
-                    mapped_class = self.map_yolo_class_to_wildlife(yolo_class)
-                    if mapped_class is not None and confidences[i] > best_confidence:
-                        best_mapped_pred = mapped_class
-                        best_confidence = float(confidences[i])
+                    cls_id = int(classes[i])
+                    cls_name = names[cls_id].lower()
+                    conf = float(confidences[i])
 
-                if best_mapped_pred is not None:
+                    if cls_name in ["buffalo", "elephant", "rhino", "zebra"]:
+                        if conf > best_confidence:
+                            best_pred_name = cls_name
+                            best_confidence = conf
+
+
+                if best_pred_name is not None:
+                    pred_class = WILDLIFE_CLASSES.index(best_pred_name.capitalize())
                     return {
                         "source": "YOLOv8",
-                        "pred_class": best_mapped_pred,
+                        "pred_class": pred_class,
                         "confidence": best_confidence,
-                        "snn_probs": snn_probs[0].cpu().numpy(),
                         "annotated_image": annotated_image,
                     }
 
+
             # Fallback
             return {
-                "source": "SNN_fallback",
+                "source": "SNN",
                 "pred_class": snn_pred,
                 "confidence": snn_confidence,
                 "snn_probs": snn_probs[0].cpu().numpy(),
@@ -412,21 +418,17 @@ with right_col:
                     st.markdown("**Detection Output**")
                     st.image(result["annotated_image"], use_container_width=True)
             else:
+                st.info("YOLOv8 was not used for this prediction (SNN was confident).")
+            
                 # Keep info message if YOLO was not used
                 # with yolo_placeholder:
-                #     st.markdown("**Detection Output**")
-                #     st.image(result["annotated_image"], use_container_width=True)
-                st.info("YOLOv8 was not used for this prediction (SNN was confident).")
+                    
 
+            source = result["source"]
 
-            if result["snn_probs"][3] > 0.35:
-                final_class = WILDLIFE_CLASSES[3]
-                final_conf = result["snn_probs"][3] * 100.0
-                source = "SNN"
-            else:
-                final_class = WILDLIFE_CLASSES[result["pred_class"]]
-                final_conf = result["confidence"] * 100.0
-                source = result["source"]
+            final_class = WILDLIFE_CLASSES[result["pred_class"]]
+            final_conf = result["confidence"] * 100.0
+
             snn_time_ms = result["snn_time"] * 1000.0
             yolo_time_ms = result["yolo_time"] * 1000.0
             total_time_ms = result["total_time"] * 1000.0
@@ -465,5 +467,3 @@ with right_col:
                 st.write(f"- **{cls_name}**: {p*100:.2f}%")
     else:
         st.info("Please upload a wildlife image to start the prediction.")
-
-
